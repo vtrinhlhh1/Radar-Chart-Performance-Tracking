@@ -266,7 +266,11 @@ export const StudentsDataEditor: React.FC<StudentsDataEditorProps> = ({
       </div>
 
       {/* SECTION CONTENT */}
-      <div className="p-4 flex-1 overflow-y-auto space-y-4">
+      <div
+        className={`p-4 flex-1 ${
+          activeSection === 'students' ? 'flex flex-col min-h-0 overflow-hidden' : 'overflow-y-auto space-y-4'
+        }`}
+      >
         {/* SECTION 1: STUDENTS & PERFORMANCE SCORES */}
         {activeSection === 'students' && (() => {
           const isClassAvgMode = selectedStudentId === 'ALL_CLASS';
@@ -292,9 +296,9 @@ export const StudentsDataEditor: React.FC<StudentsDataEditorProps> = ({
           const selectedStudentObj = miniTab.students.find((s) => s.id === selectedStudentId);
 
           return (
-            <div className="space-y-4">
+            <div className="flex flex-col h-full min-h-0 space-y-3">
               {/* ADD STUDENT INPUT */}
-              <div className="flex gap-2">
+              <div className="flex gap-2 shrink-0">
                 <input
                   type="text"
                   placeholder="Student name..."
@@ -313,7 +317,7 @@ export const StudentsDataEditor: React.FC<StudentsDataEditorProps> = ({
               </div>
 
               {/* STUDENT SELECTOR CARDS GRID */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto pr-1 shrink-0">
                 {/* WHOLE CLASS CARD */}
                 <div
                   onClick={() => onSelectStudent('ALL_CLASS')}
@@ -368,8 +372,8 @@ export const StudentsDataEditor: React.FC<StudentsDataEditorProps> = ({
 
               {/* PERFORMANCE SCORES INPUT TABLE FOR SELECTED STUDENT OR WHOLE CLASS */}
               {selectedStudentId && (
-                <div className="pt-2 border-t border-slate-200">
-                  <div className="flex items-center justify-between mb-2">
+                <div className="pt-2 border-t border-slate-200 flex-1 flex flex-col min-h-0">
+                  <div className="flex items-center justify-between mb-2 shrink-0">
                     <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                       Performance Scores for:{' '}
                       <span className="text-blue-600 font-extrabold">
@@ -386,7 +390,7 @@ export const StudentsDataEditor: React.FC<StudentsDataEditorProps> = ({
                     </span>
                   </div>
 
-                  <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                  <div className="space-y-3 flex-1 overflow-y-auto pr-1">
                     {miniTab.groups.map((group) => {
                       const groupCriteria = miniTab.criteria.filter((c) => c.groupId === group.id);
                       if (groupCriteria.length === 0) return null;
