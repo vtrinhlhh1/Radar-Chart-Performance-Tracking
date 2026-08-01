@@ -414,13 +414,13 @@ export const StudentsDataEditor: React.FC<StudentsDataEditorProps> = ({
                               return (
                                 <div
                                   key={`perf-${criterion.id}`}
-                                  className="flex items-center justify-between bg-white p-2 rounded-lg border border-slate-200/80 text-xs"
+                                  className="flex items-center justify-between gap-2 bg-white p-2 rounded-lg border border-slate-200/80 text-xs"
                                 >
-                                  <span className="text-slate-700 font-medium truncate max-w-[200px]" title={criterion.name}>
+                                  <span className="text-slate-700 font-medium break-words line-clamp-2 leading-tight flex-1" title={criterion.name}>
                                     {criterion.name}
                                   </span>
 
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2 shrink-0">
                                     {isClassAvgMode ? (
                                       <span className="px-2.5 py-0.5 bg-blue-50 text-blue-700 font-bold rounded-md border border-blue-100 text-xs">
                                         {currentScore}

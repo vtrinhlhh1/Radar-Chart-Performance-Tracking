@@ -9,6 +9,7 @@ interface ExportModalProps {
     bgColor: string;
     format: 'png' | 'jpeg';
     isBatchExport: boolean;
+    includePerformanceScores: boolean;
   }) => void;
   singleDefaultFilename: string;
   batchDefaultFilename: string;
@@ -38,6 +39,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [bgType, setBgType] = useState<'transparent' | 'solid'>('transparent');
   const [solidColor, setSolidColor] = useState('#ffffff');
   const [format, setFormat] = useState<'png' | 'jpeg'>('png');
+  const [includePerformanceScores, setIncludePerformanceScores] = useState(true);
 
   // Reset modal state when opened
   useEffect(() => {
@@ -47,6 +49,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       setFormat('png');
       setBgType('transparent');
       setSolidColor('#ffffff');
+      setIncludePerformanceScores(true);
     }
   }, [isOpen, singleDefaultFilename]);
 
@@ -72,6 +75,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       bgColor: format === 'jpeg' ? (bgType === 'transparent' ? '#ffffff' : solidColor) : effectiveBgColor,
       format,
       isBatchExport: isBatch,
+      includePerformanceScores,
     });
   };
 
@@ -156,6 +160,25 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 className="w-4 h-4 accent-blue-600 rounded cursor-pointer shrink-0"
               />
               <span>Download all charts in this mini-tab as a ZIP archive</span>
+            </label>
+          </div>
+
+          {/* INCLUDE PERFORMANCE SCORES TICK-BOX */}
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-2.5 p-2.5 bg-blue-50/50 hover:bg-blue-50/80 border border-blue-200/80 rounded-xl text-xs font-semibold text-slate-800 cursor-pointer transition-colors">
+              <input
+                type="checkbox"
+                checked={includePerformanceScores}
+                onChange={(e) => setIncludePerformanceScores(e.target.checked)}
+                disabled={isExporting}
+                className="w-4 h-4 accent-blue-600 rounded cursor-pointer shrink-0"
+              />
+              <div className="flex flex-col">
+                <span className="font-bold text-slate-800">Include Performance Scores</span>
+                <span className="text-[10px] text-slate-500 font-normal">
+                  Append criteria &amp; performance score breakdown below chart
+                </span>
+              </div>
             </label>
           </div>
 

@@ -7,7 +7,7 @@ import { StudentsDataEditor } from './components/StudentsDataEditor';
 import { OverallView } from './components/OverallView';
 import { ExportModal } from './components/ExportModal';
 import { MiniTabDropdown } from './components/MiniTabDropdown';
-import { downloadChartImage, downloadAllChartsInMiniTab } from './utils/exportCharts';
+import { downloadChartImage, downloadSingleChart, downloadAllChartsInMiniTab } from './utils/exportCharts';
 import {
   Plus,
   Trash2,
@@ -346,6 +346,7 @@ export default function App() {
     bgColor: string;
     format: 'png' | 'jpeg';
     isBatchExport: boolean;
+    includePerformanceScores: boolean;
   }) => {
     if (!activeMiniTab) return;
     setIsExporting(true);
@@ -358,16 +359,29 @@ export default function App() {
           options.format,
           options.bgColor,
           options.filename,
+          options.includePerformanceScores,
           (current, total) => {
             setExportProgress({ current, total });
           }
         );
       } else {
-        // Single active chart SVG export
-        const svgElem = chartSvgContainerRef.current?.querySelector('svg');
-        if (svgElem) {
-          await downloadChartImage(svgElem, options.filename, options.format, options.bgColor);
-        }
+        // Single chart export for currently selected student / Whole Class Average
+        const isClassAvg = selectedStudentId === 'ALL_CLASS';
+        const currentStudent: Student = isClassAvg
+          ? { id: 'class_avg', name: 'Whole Class Average' }
+          : activeMiniTab.students.find((s) => s.id === selectedStudentId) || {
+              id: selectedStudentId || 'student',
+              name: 'Student',
+            };
+
+        await downloadSingleChart(
+          activeMiniTab,
+          currentStudent,
+          options.filename,
+          options.format,
+          options.bgColor,
+          options.includePerformanceScores
+        );
       }
       setIsExportModalOpen(false);
     } catch (err) {

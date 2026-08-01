@@ -1,6 +1,6 @@
 import React from 'react';
 import { MiniTab, Student } from '../types';
-import { getOrderedCriteria } from '../utils/chartHelpers';
+import { getOrderedCriteria, wrapCriteriaName } from '../utils/chartHelpers';
 
 interface RadarChartProps {
   miniTab: MiniTab;
@@ -391,18 +391,15 @@ export const RadarChart: React.FC<RadarChartProps> = ({
           else if (cos < -0.08) textAnchor = 'end';
 
           // Vertical offset based on sin
-          let dy = '0.35em';
-          if (sin > 0.6) dy = '0.8em';
-          else if (sin > 0.2) dy = '0.5em';
-          else if (sin < -0.6) dy = '-0.3em';
-          else if (sin < -0.2) dy = '0em';
+          let baseDyNum = 0.35;
+          if (sin > 0.6) baseDyNum = 0.8;
+          else if (sin > 0.2) baseDyNum = 0.5;
+          else if (sin < -0.6) baseDyNum = -0.3;
+          else if (sin < -0.2) baseDyNum = 0;
 
-          // Truncate long criteria for chart view when dense, full text on hover
-          const maxCharLength = totalCriteria > 20 ? 18 : totalCriteria > 14 ? 22 : totalCriteria > 10 ? 28 : 36;
-          const displayName =
-            criterion.name.length > maxCharLength
-              ? `${criterion.name.substring(0, maxCharLength - 1)}…`
-              : criterion.name;
+          // Multi-line wrapping threshold based on density
+          const maxPerLine = totalCriteria > 20 ? 14 : totalCriteria > 14 ? 18 : totalCriteria > 10 ? 22 : 26;
+          const lines = wrapCriteriaName(criterion.name, maxPerLine);
 
           return (
             <g key={`criteria-label-${criterion.id}`}>
@@ -413,11 +410,17 @@ export const RadarChart: React.FC<RadarChartProps> = ({
                 fontSize="10.5"
                 fontWeight="500"
                 textAnchor={textAnchor}
-                dy={dy}
                 className="select-none transition-colors hover:fill-blue-600 hover:font-bold cursor-default"
               >
                 <title>{criterion.name}</title>
-                {displayName}
+                {lines.length === 1 ? (
+                  <tspan x={lx} dy={`${baseDyNum}em`}>{lines[0]}</tspan>
+                ) : (
+                  <>
+                    <tspan x={lx} dy={`${baseDyNum - 0.55}em`}>{lines[0]}</tspan>
+                    <tspan x={lx} dy="1.15em">{lines[1]}</tspan>
+                  </>
+                )}
               </text>
             </g>
           );

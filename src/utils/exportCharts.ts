@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { MiniTab, Student } from '../types';
-import { getOrderedCriteria } from './chartHelpers';
+import { getOrderedCriteria, wrapCriteriaName } from './chartHelpers';
 
 /**
  * Converts an SVG element to a PNG or JPEG Data URL or Blob
@@ -65,6 +65,74 @@ export async function downloadChartImage(
 }
 
 /**
+ * Downloads a single chart image generated dynamically from student data
+ */
+export async function downloadSingleChart(
+  miniTab: MiniTab,
+  student: Student,
+  filename: string,
+  format: 'png' | 'jpeg' = 'png',
+  bgColor: string = 'transparent',
+  includePerformanceScores: boolean = false
+): Promise<void> {
+  let miniTabToUse = miniTab;
+
+  // Compute class average if exporting whole class average
+  if (student.id === 'class_avg' || !miniTab.performances[student.id]) {
+    const classAvgPerf: Record<string, number> = {};
+    miniTab.criteria.forEach((criterion) => {
+      let sum = 0;
+      let count = 0;
+      miniTab.students.forEach((s) => {
+        const v = miniTab.performances[s.id]?.[criterion.id];
+        if (v !== undefined && v !== null) {
+          sum += v;
+          count++;
+        }
+      });
+      classAvgPerf[criterion.id] = count > 0 ? parseFloat((sum / count).toFixed(2)) : 0;
+    });
+
+    miniTabToUse = {
+      ...miniTab,
+      performances: {
+        ...miniTab.performances,
+        class_avg: classAvgPerf,
+      },
+    };
+  }
+
+  const container = document.createElement('div');
+  container.style.position = 'absolute';
+  container.style.left = '-9999px';
+  container.style.top = '-9999px';
+  document.body.appendChild(container);
+
+  try {
+    const svgString = renderStudentRadarSVGString(
+      miniTabToUse,
+      student,
+      bgColor,
+      includePerformanceScores
+    );
+    container.innerHTML = svgString;
+
+    const svgElem = container.querySelector('svg');
+    if (svgElem) {
+      const dataUrl = await svgToImageDataUrl(svgElem, format, 0.95, bgColor);
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = filename.toLowerCase().endsWith(`.${format}`) ? filename : `${filename}.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+
+/**
  * Downloads all charts in a mini tab for every student as a ZIP file
  */
 export async function downloadAllChartsInMiniTab(
@@ -72,6 +140,7 @@ export async function downloadAllChartsInMiniTab(
   format: 'png' | 'jpeg' = 'png',
   bgColor: string = 'transparent',
   customZipName?: string,
+  includePerformanceScores: boolean = false,
   onProgress?: (current: number, total: number) => void
 ): Promise<void> {
   const zip = new JSZip();
@@ -118,7 +187,12 @@ export async function downloadAllChartsInMiniTab(
       const student = exportStudents[i];
       if (onProgress) onProgress(i + 1, total);
 
-      const svgString = renderStudentRadarSVGString(miniTabWithAvg, student, bgColor);
+      const svgString = renderStudentRadarSVGString(
+        miniTabWithAvg,
+        student,
+        bgColor,
+        includePerformanceScores
+      );
       container.innerHTML = svgString;
 
       const svgElem = container.querySelector('svg');
@@ -143,13 +217,23 @@ export async function downloadAllChartsInMiniTab(
   }
 }
 
+function escapeXml(str: string): string {
+  return (str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 /**
  * Pure helper to render full SVG string for a student
  */
-function renderStudentRadarSVGString(
+export function renderStudentRadarSVGString(
   miniTab: MiniTab,
   student: Student,
-  bgColor: string = 'transparent'
+  bgColor: string = 'transparent',
+  includePerformanceScores: boolean = false
 ): string {
   const { circles, groups, criteria, performances, chartSettings } = miniTab;
   const orderedCriteria = getOrderedCriteria(criteria, groups);
@@ -220,7 +304,7 @@ function renderStudentRadarSVGString(
       const nameAngle = -Math.PI / 2 - 0.25;
       const nx = cx + r * Math.cos(nameAngle);
       const ny = cy + r * Math.sin(nameAngle);
-      circlesSVG += `<text x="${nx}" y="${ny}" fill="#334155" font-size="${circles.circleNameFontSize || 11}" font-weight="700" text-anchor="middle" dominant-baseline="middle">${name}</text>`;
+      circlesSVG += `<text x="${nx}" y="${ny}" fill="#334155" font-size="${circles.circleNameFontSize || 11}" font-weight="700" text-anchor="middle" dominant-baseline="middle">${escapeXml(name)}</text>`;
     }
   }
 
@@ -253,13 +337,13 @@ function renderStudentRadarSVGString(
       groupLabelsSVG += `
         <g transform="translate(${gx}, ${gy}) rotate(${textDeg})">
           <rect x="${rectX}" y="${rectY}" width="${rectW}" height="${rectH}" rx="4" fill="${group.color || '#3b82f6'}" fill-opacity="0.85" stroke="${group.color || '#3b82f6'}" stroke-width="1"/>
-          <text x="0" y="0" fill="#ffffff" font-size="${fontSz}" font-weight="800" text-anchor="middle" dominant-baseline="middle">${group.name}</text>
+          <text x="0" y="0" fill="#ffffff" font-size="${fontSz}" font-weight="800" text-anchor="middle" dominant-baseline="middle">${escapeXml(group.name)}</text>
         </g>
       `;
     } else {
       groupLabelsSVG += `
         <g transform="translate(${gx}, ${gy}) rotate(${textDeg})">
-          <text x="0" y="0" fill="${group.color || '#3b82f6'}" font-size="${fontSz}" font-weight="800" text-anchor="middle" dominant-baseline="middle" stroke="#ffffff" stroke-width="0.5" paint-order="stroke fill">${group.name}</text>
+          <text x="0" y="0" fill="${group.color || '#3b82f6'}" font-size="${fontSz}" font-weight="800" text-anchor="middle" dominant-baseline="middle" stroke="#ffffff" stroke-width="0.5" paint-order="stroke fill">${escapeXml(group.name)}</text>
         </g>
       `;
     }
@@ -281,41 +365,141 @@ function renderStudentRadarSVGString(
     if (cos > 0.08) textAnchor = 'start';
     else if (cos < -0.08) textAnchor = 'end';
 
-    let dy = '0.35em';
-    if (sin > 0.6) dy = '0.8em';
-    else if (sin > 0.2) dy = '0.5em';
-    else if (sin < -0.6) dy = '-0.3em';
-    else if (sin < -0.2) dy = '0em';
+    let baseDyNum = 0.35;
+    if (sin > 0.6) baseDyNum = 0.8;
+    else if (sin > 0.2) baseDyNum = 0.5;
+    else if (sin < -0.6) baseDyNum = -0.3;
+    else if (sin < -0.2) baseDyNum = 0;
 
-    const maxCharLength = totalCriteria > 20 ? 18 : totalCriteria > 14 ? 22 : totalCriteria > 10 ? 28 : 36;
-    const displayName =
-      criterion.name.length > maxCharLength
-        ? `${criterion.name.substring(0, maxCharLength - 1)}…`
-        : criterion.name;
+    const maxPerLine = totalCriteria > 20 ? 14 : totalCriteria > 14 ? 18 : totalCriteria > 10 ? 22 : 26;
+    const lines = wrapCriteriaName(criterion.name, maxPerLine);
 
-    const safeName = displayName
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-
-    criteriaLabelsSVG += `<text x="${lx}" y="${ly}" fill="#1e293b" font-size="10.5" font-weight="500" text-anchor="${textAnchor}" dy="${dy}">${safeName}</text>`;
+    if (lines.length === 1) {
+      criteriaLabelsSVG += `<text x="${lx}" y="${ly}" fill="#1e293b" font-size="10.5" font-weight="500" text-anchor="${textAnchor}" dy="${baseDyNum}em">${escapeXml(lines[0])}</text>`;
+    } else {
+      criteriaLabelsSVG += `<text x="${lx}" y="${ly}" fill="#1e293b" font-size="10.5" font-weight="500" text-anchor="${textAnchor}"><tspan x="${lx}" dy="${baseDyNum - 0.55}em">${escapeXml(lines[0])}</tspan><tspan x="${lx}" dy="1.15em">${escapeXml(lines[1])}</tspan></text>`;
+    }
   });
+
+  // Calculate layout for Performance Scores table if requested
+  let performanceTableSVG = '';
+  let extraHeight = 0;
+
+  if (includePerformanceScores) {
+    const activeGroupsData = groups
+      .map((g) => ({
+        group: g,
+        criteria: criteria.filter((c) => c.groupId === g.id),
+      }))
+      .filter((g) => g.criteria.length > 0);
+
+    const isSingleColumn = activeGroupsData.length === 1;
+
+    let col1: typeof activeGroupsData = [];
+    let col2: typeof activeGroupsData = [];
+    let col1H = 0;
+    let col2H = 0;
+
+    activeGroupsData.forEach((gData) => {
+      const boxH = 32 + gData.criteria.length * 26 + 8;
+      if (isSingleColumn || col1H <= col2H) {
+        col1.push(gData);
+        col1H += boxH + 12;
+      } else {
+        col2.push(gData);
+        col2H += boxH + 12;
+      }
+    });
+
+    const tableContentH = Math.max(col1H, col2H, 40);
+    extraHeight = tableContentH + 50;
+
+    const startY = 790;
+    performanceTableSVG += `
+      <g transform="translate(30, ${startY})">
+        <text x="0" y="0" fill="#2563eb" font-size="13" font-weight="800" letter-spacing="0.5">PERFORMANCE SCORES DETAILS</text>
+        <text x="740" y="0" fill="#64748b" font-size="11" font-weight="600" text-anchor="end">Max Score: ${maxScore}</text>
+        <line x1="0" y1="12" x2="740" y2="12" stroke="#cbd5e1" stroke-width="1"/>
+      </g>
+    `;
+
+    // Render Col 1
+    let curY1 = startY + 28;
+    col1.forEach(({ group, criteria: gCriteria }) => {
+      const boxH = 32 + gCriteria.length * 26 + 8;
+      const boxWidth = isSingleColumn ? 740 : 355;
+      performanceTableSVG += renderGroupBoxSVG(group, gCriteria, 30, curY1, boxWidth, boxH, studentPerf);
+      curY1 += boxH + 12;
+    });
+
+    // Render Col 2 if multi-column
+    if (!isSingleColumn && col2.length > 0) {
+      let curY2 = startY + 28;
+      col2.forEach(({ group, criteria: gCriteria }) => {
+        const boxH = 32 + gCriteria.length * 26 + 8;
+        performanceTableSVG += renderGroupBoxSVG(group, gCriteria, 415, curY2, 355, boxH, studentPerf);
+        curY2 += boxH + 12;
+      });
+    }
+  }
+
+  const svgHeight = size + extraHeight;
 
   const bgRectSVG =
     bgColor && bgColor !== 'transparent'
-      ? `<rect width="${size}" height="${size}" fill="${bgColor}"/>`
+      ? `<rect width="${size}" height="${svgHeight}" fill="${bgColor}"/>`
       : '';
 
   return `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${svgHeight}" width="${size}" height="${svgHeight}">
       ${bgRectSVG}
-      <text x="${cx}" y="36" fill="#0f172a" font-size="18" font-weight="700" text-anchor="middle">${student.name} - ${miniTab.name}</text>
+      <text x="${cx}" y="36" fill="#0f172a" font-size="18" font-weight="700" text-anchor="middle">${escapeXml(student.name)} - ${escapeXml(miniTab.name)}</text>
       ${groupSlicesSVG}
       ${circlesSVG}
       ${spokesSVG}
       <path d="${pathD}" fill="${chartSettings.isFilled ? chartSettings.lineColor || '#2563eb' : 'none'}" fill-opacity="${chartSettings.isFilled ? chartSettings.fillOpacity || 0.6 : 0}" stroke="${chartSettings.lineColor || '#2563eb'}" stroke-width="2.5"/>
       ${groupLabelsSVG}
       ${criteriaLabelsSVG}
+      ${performanceTableSVG}
     </svg>
+  `;
+}
+
+function renderGroupBoxSVG(
+  group: any,
+  criteriaList: any[],
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  studentPerf: Record<string, number>
+): string {
+  const safeGroupName = escapeXml(group.name);
+  const groupColor = group.color || '#3b82f6';
+
+  let rowsSVG = '';
+  criteriaList.forEach((criterion, idx) => {
+    const rowTop = 32 + idx * 26;
+    const rawScore = studentPerf[criterion.id];
+    const scoreVal = rawScore !== undefined && rawScore !== null ? rawScore : 0;
+    const displayName =
+      criterion.name.length > 34 ? `${criterion.name.substring(0, 33)}…` : criterion.name;
+    const safeCriterionName = escapeXml(displayName);
+
+    rowsSVG += `
+      <rect x="8" y="${rowTop}" width="${width - 16}" height="22" rx="5" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+      <text x="16" y="${rowTop + 15}" fill="#334155" font-size="10.5" font-weight="500">${safeCriterionName}</text>
+      <rect x="${width - 58}" y="${rowTop + 3}" width="42" height="16" rx="4" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+      <text x="${width - 37}" y="${rowTop + 14}" fill="#1d4ed8" font-size="10" font-weight="800" text-anchor="middle">${scoreVal}</text>
+    `;
+  });
+
+  return `
+    <g transform="translate(${x}, ${y})">
+      <rect x="0" y="0" width="${width}" height="${height}" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+      <circle cx="16" cy="18" r="4.5" fill="${groupColor}"/>
+      <text x="26" y="22" fill="${groupColor}" font-size="11.5" font-weight="700">${safeGroupName}</text>
+      ${rowsSVG}
+    </g>
   `;
 }
