@@ -1,1 +1,81 @@
 @import "tailwindcss";
+
+@media print {
+  @page {
+    margin: 10mm;
+    size: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Hide non-essential UI components */
+  header,
+  footer,
+  nav,
+  button,
+  select,
+  input,
+  label,
+  .no-print,
+  [role="dialog"] {
+    display: none !important;
+  }
+
+  /* Clean page background and legible typography */
+  body,
+  #root,
+  main {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Chart container & SVG print optimizations */
+  svg {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin: 0 auto !important;
+  }
+
+  svg text {
+    fill: #0f172a !important;
+    font-weight: 600 !important;
+  }
+
+  /* Reset layout grids for full-width print presentation */
+  .grid {
+    display: block !important;
+  }
+
+  .lg\:col-span-7,
+  .lg\:col-span-5 {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Border and card background resets */
+  .bg-slate-100,
+  .bg-slate-100\/70,
+  .bg-slate-50,
+  .bg-slate-900 {
+    background-color: transparent !important;
+  }
+
+  .border,
+  .border-slate-200,
+  .border-slate-200\/80 {
+    border-color: #cbd5e1 !important;
+  }
+}

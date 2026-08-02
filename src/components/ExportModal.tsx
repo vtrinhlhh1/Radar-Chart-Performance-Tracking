@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Download, X, FileText, Palette, Check, Image as ImageIcon, Archive, Layers } from 'lucide-react';
+import { Download, X, FileText, Palette, Check, Image as ImageIcon, Archive, Layers, Maximize2 } from 'lucide-react';
+import { PaperSize, PaperOrientation } from '../types';
+import { PAPER_DIMENSIONS } from '../utils/exportCharts';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -10,6 +12,8 @@ interface ExportModalProps {
     format: 'png' | 'jpeg';
     isBatchExport: boolean;
     includePerformanceScores: boolean;
+    paperSize: PaperSize;
+    orientation: PaperOrientation;
   }) => void;
   singleDefaultFilename: string;
   batchDefaultFilename: string;
@@ -40,6 +44,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [solidColor, setSolidColor] = useState('#ffffff');
   const [format, setFormat] = useState<'png' | 'jpeg'>('png');
   const [includePerformanceScores, setIncludePerformanceScores] = useState(true);
+  const [paperSize, setPaperSize] = useState<PaperSize>('a4');
+  const [orientation, setOrientation] = useState<PaperOrientation>('landscape');
 
   // Reset modal state when opened
   useEffect(() => {
@@ -50,6 +56,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       setBgType('transparent');
       setSolidColor('#ffffff');
       setIncludePerformanceScores(true);
+      setPaperSize('a4');
+      setOrientation('landscape');
     }
   }, [isOpen, singleDefaultFilename]);
 
@@ -76,16 +84,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       format,
       isBatchExport: isBatch,
       includePerformanceScores,
+      paperSize,
+      orientation: paperSize === 'square' ? 'portrait' : orientation,
     });
   };
 
+  const currentDims = PAPER_DIMENSIONS[paperSize][paperSize === 'square' ? 'portrait' : orientation];
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md my-8 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
         {/* MODAL HEADER */}
@@ -98,7 +110,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <h3 className="text-sm font-bold text-slate-800">
                 {isBatch ? 'Export All Charts in Mini-Tab (ZIP)' : 'Export Chart Image'}
               </h3>
-              <p className="text-xs text-slate-500">Configure export scope, filename, and format</p>
+              <p className="text-xs text-slate-500">Configure layout size, orientation &amp; format</p>
             </div>
           </div>
           <button
@@ -112,7 +124,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         </div>
 
         {/* MODAL FORM */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-5">
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
           {/* EXPORT SCOPE SELECTOR */}
           <div className="space-y-1.5">
             <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
@@ -163,6 +175,83 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </label>
           </div>
 
+          {/* PAPER SIZE & ORIENTATION SELECTION */}
+          <div className="space-y-2 p-3 bg-slate-50/90 border border-slate-200/80 rounded-2xl">
+            <label className="flex items-center justify-between text-xs font-bold text-slate-800">
+              <span className="flex items-center gap-1.5">
+                <Maximize2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>Paper Size &amp; Orientation</span>
+              </span>
+              <span className="text-[10px] text-blue-700 font-bold bg-blue-100/80 px-2 py-0.5 rounded-full border border-blue-200">
+                {currentDims.width} × {currentDims.height} px
+              </span>
+            </label>
+
+            {/* PAPER SIZE OPTIONS */}
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                { id: 'a4', label: 'A4', desc: '210×297mm' },
+                { id: 'letter', label: 'Letter', desc: '8.5×11in' },
+                { id: 'a5', label: 'A5', desc: '148×210mm' },
+                { id: 'a3', label: 'A3', desc: '297×420mm' },
+                { id: 'legal', label: 'Legal', desc: '8.5×14in' },
+                { id: 'square', label: 'Square', desc: '1:1 Frame' },
+              ].map((paper) => (
+                <button
+                  key={paper.id}
+                  type="button"
+                  onClick={() => setPaperSize(paper.id as PaperSize)}
+                  disabled={isExporting}
+                  className={`p-2 rounded-xl border text-left transition-all cursor-pointer ${
+                    paperSize === paper.id
+                      ? 'border-blue-500 bg-white text-blue-700 shadow-xs ring-2 ring-blue-100'
+                      : 'border-slate-200 bg-white/60 text-slate-600 hover:bg-white hover:text-slate-900'
+                  }`}
+                >
+                  <div className="font-bold text-xs">{paper.label}</div>
+                  <div className="text-[9.5px] opacity-75 font-medium">{paper.desc}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* ORIENTATION OPTIONS (IF NOT SQUARE) */}
+            {paperSize !== 'square' ? (
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setOrientation('landscape')}
+                  disabled={isExporting}
+                  className={`flex items-center justify-center gap-2 p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                    orientation === 'landscape'
+                      ? 'border-blue-500 bg-white text-blue-700 shadow-xs ring-2 ring-blue-100'
+                      : 'border-slate-200 bg-white/60 text-slate-600 hover:bg-white'
+                  }`}
+                >
+                  <div className="w-4 h-3 rounded border-2 border-current" />
+                  <span>Landscape</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setOrientation('portrait')}
+                  disabled={isExporting}
+                  className={`flex items-center justify-center gap-2 p-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                    orientation === 'portrait'
+                      ? 'border-blue-500 bg-white text-blue-700 shadow-xs ring-2 ring-blue-100'
+                      : 'border-slate-200 bg-white/60 text-slate-600 hover:bg-white'
+                  }`}
+                >
+                  <div className="w-3 h-4 rounded border-2 border-current" />
+                  <span>Portrait</span>
+                </button>
+              </div>
+            ) : (
+              <p className="text-[10px] text-slate-500 font-medium italic text-center pt-0.5">
+                Square layout maintains a 1:1 balanced aspect ratio.
+              </p>
+            )}
+          </div>
+
           {/* INCLUDE PERFORMANCE SCORES TICK-BOX */}
           <div className="space-y-1.5">
             <label className="flex items-center gap-2.5 p-2.5 bg-blue-50/50 hover:bg-blue-50/80 border border-blue-200/80 rounded-xl text-xs font-semibold text-slate-800 cursor-pointer transition-colors">
@@ -176,7 +265,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <div className="flex flex-col">
                 <span className="font-bold text-slate-800">Include Performance Scores</span>
                 <span className="text-[10px] text-slate-500 font-normal">
-                  Append criteria &amp; performance score breakdown below chart
+                  Append criteria &amp; performance score breakdown in adapted layout
                 </span>
               </div>
             </label>

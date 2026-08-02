@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AppState, GradeTabGroup, ClassTab, MiniTab, Student } from './types';
+import { AppState, GradeTabGroup, ClassTab, MiniTab, Student, PaperSize, PaperOrientation } from './types';
 import { createDefaultAppState, createDefaultMiniTab } from './utils/defaultData';
 import { saveLocalState, loadLocalState, exportStateAsJSON, importStateFromJSON, uploadToGoogleDrive } from './utils/driveSync';
 import { RadarChart } from './components/RadarChart';
@@ -347,6 +347,8 @@ export default function App() {
     format: 'png' | 'jpeg';
     isBatchExport: boolean;
     includePerformanceScores: boolean;
+    paperSize: PaperSize;
+    orientation: PaperOrientation;
   }) => {
     if (!activeMiniTab) return;
     setIsExporting(true);
@@ -362,7 +364,9 @@ export default function App() {
           options.includePerformanceScores,
           (current, total) => {
             setExportProgress({ current, total });
-          }
+          },
+          options.paperSize,
+          options.orientation
         );
       } else {
         // Single chart export for currently selected student / Whole Class Average
@@ -380,7 +384,9 @@ export default function App() {
           options.filename,
           options.format,
           options.bgColor,
-          options.includePerformanceScores
+          options.includePerformanceScores,
+          options.paperSize,
+          options.orientation
         );
       }
       setIsExportModalOpen(false);
@@ -440,7 +446,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-100/70 text-slate-900 font-sans flex flex-col antialiased">
       {/* TOP APPLICATION HEADER */}
-      <header className="bg-slate-900 text-white px-4 lg:px-8 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-md border-b border-slate-800">
+      <header className="no-print bg-slate-900 text-white px-4 lg:px-8 py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-md border-b border-slate-800">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-blue-600 rounded-xl shadow-xs">
             <BarChart2 className="w-5 h-5 text-white" />
@@ -562,7 +568,7 @@ export default function App() {
       {/* MAIN CONTAINER */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-5">
         {/* LEVEL 1: TAB GROUP NAVIGATION (GRADES) */}
-        <div className="bg-white p-2 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-2 overflow-x-auto">
+        <div className="no-print bg-white p-2 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-2 overflow-x-auto">
           <div className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider border-r border-slate-200">
             <GraduationCap className="w-4 h-4 text-blue-600" />
             <span>Grade Groups</span>
@@ -658,7 +664,7 @@ export default function App() {
 
         {/* LEVEL 2: CLASS TABS & OVERALL TAB (COMPLEMENT) */}
         {activeGradeGroup && (
-          <div className="bg-white p-2 rounded-2xl border border-slate-200/80 shadow-xs space-y-2">
+          <div className="no-print bg-white p-2 rounded-2xl border border-slate-200/80 shadow-xs space-y-2">
             <div className="flex items-center gap-2 overflow-x-auto pb-1">
               <div className="flex items-center gap-1 px-3 py-1 text-xs font-bold text-slate-500 uppercase tracking-wider border-r border-slate-200">
                 <Users className="w-4 h-4 text-emerald-600" />
@@ -864,7 +870,7 @@ export default function App() {
                   {/* LEFT: RADAR CHART STAGE */}
                   <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
                     {/* CHART ACTION TOOLBAR */}
-                    <div className="flex items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200/60">
+                    <div className="no-print flex items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200/60">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
                           Chart Visualizer
@@ -890,7 +896,7 @@ export default function App() {
                     </div>
 
                     {/* DISPLAY MODE SWITCHER: WHOLE CLASS VS INDIVIDUAL STUDENT */}
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                    <div className="no-print flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-slate-700">Display:</span>
                         <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">

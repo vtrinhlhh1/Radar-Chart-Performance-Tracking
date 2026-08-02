@@ -1,6 +1,36 @@
 import JSZip from 'jszip';
-import { MiniTab, Student } from '../types';
+import { MiniTab, Student, PaperSize, PaperOrientation } from '../types';
 import { getOrderedCriteria, wrapCriteriaName } from './chartHelpers';
+
+export const PAPER_DIMENSIONS: Record<
+  PaperSize,
+  { portrait: { width: number; height: number }; landscape: { width: number; height: number } }
+> = {
+  a4: {
+    portrait: { width: 794, height: 1123 },
+    landscape: { width: 1123, height: 794 },
+  },
+  a5: {
+    portrait: { width: 559, height: 794 },
+    landscape: { width: 794, height: 559 },
+  },
+  a3: {
+    portrait: { width: 1123, height: 1587 },
+    landscape: { width: 1587, height: 1123 },
+  },
+  letter: {
+    portrait: { width: 816, height: 1056 },
+    landscape: { width: 1056, height: 816 },
+  },
+  legal: {
+    portrait: { width: 816, height: 1344 },
+    landscape: { width: 1344, height: 816 },
+  },
+  square: {
+    portrait: { width: 800, height: 800 },
+    landscape: { width: 800, height: 800 },
+  },
+};
 
 /**
  * Converts an SVG element to a PNG or JPEG Data URL or Blob
@@ -73,7 +103,9 @@ export async function downloadSingleChart(
   filename: string,
   format: 'png' | 'jpeg' = 'png',
   bgColor: string = 'transparent',
-  includePerformanceScores: boolean = false
+  includePerformanceScores: boolean = false,
+  paperSize: PaperSize = 'a4',
+  orientation: PaperOrientation = 'landscape'
 ): Promise<void> {
   let miniTabToUse = miniTab;
 
@@ -113,7 +145,9 @@ export async function downloadSingleChart(
       miniTabToUse,
       student,
       bgColor,
-      includePerformanceScores
+      includePerformanceScores,
+      paperSize,
+      orientation
     );
     container.innerHTML = svgString;
 
@@ -141,7 +175,9 @@ export async function downloadAllChartsInMiniTab(
   bgColor: string = 'transparent',
   customZipName?: string,
   includePerformanceScores: boolean = false,
-  onProgress?: (current: number, total: number) => void
+  onProgress?: (current: number, total: number) => void,
+  paperSize: PaperSize = 'a4',
+  orientation: PaperOrientation = 'landscape'
 ): Promise<void> {
   const zip = new JSZip();
   const rawZipName = customZipName?.trim() || `${miniTab.name}_charts`;
@@ -191,7 +227,9 @@ export async function downloadAllChartsInMiniTab(
         miniTabWithAvg,
         student,
         bgColor,
-        includePerformanceScores
+        includePerformanceScores,
+        paperSize,
+        orientation
       );
       container.innerHTML = svgString;
 
@@ -227,22 +265,76 @@ function escapeXml(str: string): string {
 }
 
 /**
- * Pure helper to render full SVG string for a student
+ * Pure helper to render full SVG string for a student adapting to paper layout and orientation
  */
 export function renderStudentRadarSVGString(
   miniTab: MiniTab,
   student: Student,
   bgColor: string = 'transparent',
-  includePerformanceScores: boolean = false
+  includePerformanceScores: boolean = false,
+  paperSize: PaperSize = 'a4',
+  orientation: PaperOrientation = 'landscape'
 ): string {
+  const effectiveOrientation = paperSize === 'square' ? 'portrait' : orientation;
+  const pageDims = PAPER_DIMENSIONS[paperSize][effectiveOrientation];
+  const pageWidth = pageDims.width;
+  const pageHeight = pageDims.height;
+
   const { circles, groups, criteria, performances, chartSettings } = miniTab;
   const orderedCriteria = getOrderedCriteria(criteria, groups);
   const totalCriteria = orderedCriteria.length;
-  const size = 800;
-  const margin = 140;
-  const cx = size / 2;
-  const cy = size / 2;
-  const radius = (size - 2 * margin) / 2;
+
+  const isLandscape = effectiveOrientation === 'landscape' && includePerformanceScores;
+
+  // Compute radar chart positioning & size
+  let chartCenterX = pageWidth / 2;
+  let chartCenterY = pageHeight / 2;
+  let radius = 100;
+  let labelMargin = 90;
+
+  if (includePerformanceScores) {
+    if (isLandscape) {
+      // Side-by-side layout: Radar Chart on Left, Performance Details on Right
+      const tableX = Math.round(pageWidth * 0.58);
+      const leftRegionRightX = tableX - 35;
+      const leftRegionLeftX = 25;
+
+      chartCenterX = (leftRegionLeftX + leftRegionRightX) / 2;
+      chartCenterY = pageHeight / 2 + 10;
+
+      const maxHorizExtent = leftRegionRightX - chartCenterX;
+      const maxVertExtent = (pageHeight - 90) / 2;
+      const maxAllowedExtent = Math.min(maxHorizExtent, maxVertExtent);
+
+      labelMargin = totalCriteria > 16 ? 120 : totalCriteria > 10 ? 105 : 90;
+      radius = Math.max(75, maxAllowedExtent - labelMargin);
+    } else {
+      // Top-Bottom layout: Radar Chart on Top, Performance Details on Bottom
+      chartCenterX = pageWidth / 2;
+      chartCenterY = pageHeight * 0.32 + 20;
+
+      const maxHorizExtent = (pageWidth - 60) / 2;
+      const maxVertExtent = pageHeight * 0.26;
+      const maxAllowedExtent = Math.min(maxHorizExtent, maxVertExtent);
+
+      labelMargin = totalCriteria > 16 ? 110 : totalCriteria > 10 ? 95 : 80;
+      radius = Math.max(75, maxAllowedExtent - labelMargin);
+    }
+  } else {
+    // Single chart centered on page
+    chartCenterX = pageWidth / 2;
+    chartCenterY = pageHeight / 2 + 10;
+
+    const maxHorizExtent = (pageWidth - 60) / 2;
+    const maxVertExtent = (pageHeight - 90) / 2;
+    const maxAllowedExtent = Math.min(maxHorizExtent, maxVertExtent);
+
+    labelMargin = totalCriteria > 16 ? 110 : totalCriteria > 10 ? 95 : 80;
+    radius = Math.max(80, maxAllowedExtent - labelMargin);
+  }
+
+  const cx = chartCenterX;
+  const cy = chartCenterY;
   const maxScore = Math.max(1, circles.count);
   const angleStep = (2 * Math.PI) / totalCriteria;
   const startAngleOffset = -Math.PI / 2;
@@ -304,7 +396,8 @@ export function renderStudentRadarSVGString(
       const nameAngle = -Math.PI / 2 - 0.25;
       const nx = cx + r * Math.cos(nameAngle);
       const ny = cy + r * Math.sin(nameAngle);
-      circlesSVG += `<text x="${nx}" y="${ny}" fill="#334155" font-size="${circles.circleNameFontSize || 11}" font-weight="700" text-anchor="middle" dominant-baseline="middle">${escapeXml(name)}</text>`;
+      const fontSize = Math.max(9, Math.min(12, (circles.circleNameFontSize || 11) * (radius / 260)));
+      circlesSVG += `<text x="${nx}" y="${ny}" fill="#334155" font-size="${fontSize.toFixed(1)}" font-weight="700" text-anchor="middle" dominant-baseline="middle">${escapeXml(name)}</text>`;
     }
   }
 
@@ -327,23 +420,23 @@ export function renderStudentRadarSVGString(
     textDeg += group.rotation || 0;
 
     const showShape = group.showShape !== false;
-    const fontSz = group.fontSize || 12;
+    const fontSz = Math.max(9, Math.min(13, (group.fontSize || 12) * (radius / 260)));
 
     if (showShape) {
-      const rectW = Math.max(90, group.name.length * fontSz * 0.8);
+      const rectW = Math.max(70, group.name.length * fontSz * 0.8);
       const rectH = fontSz * 1.8;
       const rectX = -rectW / 2;
       const rectY = -rectH / 2;
       groupLabelsSVG += `
         <g transform="translate(${gx}, ${gy}) rotate(${textDeg})">
           <rect x="${rectX}" y="${rectY}" width="${rectW}" height="${rectH}" rx="4" fill="${group.color || '#3b82f6'}" fill-opacity="0.85" stroke="${group.color || '#3b82f6'}" stroke-width="1"/>
-          <text x="0" y="0" fill="#ffffff" font-size="${fontSz}" font-weight="800" text-anchor="middle" dominant-baseline="middle">${escapeXml(group.name)}</text>
+          <text x="0" y="0" fill="#ffffff" font-size="${fontSz.toFixed(1)}" font-weight="800" text-anchor="middle" dominant-baseline="middle">${escapeXml(group.name)}</text>
         </g>
       `;
     } else {
       groupLabelsSVG += `
         <g transform="translate(${gx}, ${gy}) rotate(${textDeg})">
-          <text x="0" y="0" fill="${group.color || '#3b82f6'}" font-size="${fontSz}" font-weight="800" text-anchor="middle" dominant-baseline="middle" stroke="#ffffff" stroke-width="0.5" paint-order="stroke fill">${escapeXml(group.name)}</text>
+          <text x="0" y="0" fill="${group.color || '#3b82f6'}" font-size="${fontSz.toFixed(1)}" font-weight="800" text-anchor="middle" dominant-baseline="middle" stroke="#ffffff" stroke-width="0.5" paint-order="stroke fill">${escapeXml(group.name)}</text>
         </g>
       `;
     }
@@ -356,7 +449,7 @@ export function renderStudentRadarSVGString(
     const sin = Math.sin(angle);
 
     const isDense = totalCriteria >= 10;
-    const labelDist = radius + 18 + (isDense ? (idx % 2) * 24 : 0);
+    const labelDist = radius + 16 + (isDense ? (idx % 2) * 20 : 0);
 
     const lx = cx + labelDist * cos;
     const ly = cy + labelDist * sin;
@@ -371,19 +464,19 @@ export function renderStudentRadarSVGString(
     else if (sin < -0.6) baseDyNum = -0.3;
     else if (sin < -0.2) baseDyNum = 0;
 
-    const maxPerLine = totalCriteria > 20 ? 14 : totalCriteria > 14 ? 18 : totalCriteria > 10 ? 22 : 26;
+    const maxPerLine = totalCriteria > 20 ? 12 : totalCriteria > 14 ? 16 : totalCriteria > 10 ? 20 : 24;
     const lines = wrapCriteriaName(criterion.name, maxPerLine);
+    const labelFontSize = Math.max(8.5, Math.min(11, 10.5 * (radius / 260)));
 
     if (lines.length === 1) {
-      criteriaLabelsSVG += `<text x="${lx}" y="${ly}" fill="#1e293b" font-size="10.5" font-weight="500" text-anchor="${textAnchor}" dy="${baseDyNum}em">${escapeXml(lines[0])}</text>`;
+      criteriaLabelsSVG += `<text x="${lx}" y="${ly}" fill="#1e293b" font-size="${labelFontSize.toFixed(1)}" font-weight="500" text-anchor="${textAnchor}" dy="${baseDyNum}em">${escapeXml(lines[0])}</text>`;
     } else {
-      criteriaLabelsSVG += `<text x="${lx}" y="${ly}" fill="#1e293b" font-size="10.5" font-weight="500" text-anchor="${textAnchor}"><tspan x="${lx}" dy="${baseDyNum - 0.55}em">${escapeXml(lines[0])}</tspan><tspan x="${lx}" dy="1.15em">${escapeXml(lines[1])}</tspan></text>`;
+      criteriaLabelsSVG += `<text x="${lx}" y="${ly}" fill="#1e293b" font-size="${labelFontSize.toFixed(1)}" font-weight="500" text-anchor="${textAnchor}"><tspan x="${lx}" dy="${baseDyNum - 0.55}em">${escapeXml(lines[0])}</tspan><tspan x="${lx}" dy="1.15em">${escapeXml(lines[1])}</tspan></text>`;
     }
   });
 
   // Calculate layout for Performance Scores table if requested
   let performanceTableSVG = '';
-  let extraHeight = 0;
 
   if (includePerformanceScores) {
     const activeGroupsData = groups
@@ -393,67 +486,89 @@ export function renderStudentRadarSVGString(
       }))
       .filter((g) => g.criteria.length > 0);
 
-    const isSingleColumn = activeGroupsData.length === 1;
+    if (isLandscape) {
+      // Render on the right half of the page
+      const tableX = Math.round(pageWidth * 0.58);
+      const tableW = pageWidth - tableX - 25;
+      const tableY = 45;
 
-    let col1: typeof activeGroupsData = [];
-    let col2: typeof activeGroupsData = [];
-    let col1H = 0;
-    let col2H = 0;
+      performanceTableSVG += `
+        <g transform="translate(${tableX}, ${tableY})">
+          <text x="0" y="0" fill="#2563eb" font-size="12" font-weight="800" letter-spacing="0.5">PERFORMANCE SCORES DETAILS</text>
+          <text x="${tableW}" y="0" fill="#64748b" font-size="10.5" font-weight="600" text-anchor="end">Max Score: ${maxScore}</text>
+          <line x1="0" y1="10" x2="${tableW}" y2="10" stroke="#cbd5e1" stroke-width="1"/>
+        </g>
+      `;
 
-    activeGroupsData.forEach((gData) => {
-      const boxH = 32 + gData.criteria.length * 26 + 8;
-      if (isSingleColumn || col1H <= col2H) {
-        col1.push(gData);
-        col1H += boxH + 12;
-      } else {
-        col2.push(gData);
-        col2H += boxH + 12;
-      }
-    });
-
-    const tableContentH = Math.max(col1H, col2H, 40);
-    extraHeight = tableContentH + 50;
-
-    const startY = 790;
-    performanceTableSVG += `
-      <g transform="translate(30, ${startY})">
-        <text x="0" y="0" fill="#2563eb" font-size="13" font-weight="800" letter-spacing="0.5">PERFORMANCE SCORES DETAILS</text>
-        <text x="740" y="0" fill="#64748b" font-size="11" font-weight="600" text-anchor="end">Max Score: ${maxScore}</text>
-        <line x1="0" y1="12" x2="740" y2="12" stroke="#cbd5e1" stroke-width="1"/>
-      </g>
-    `;
-
-    // Render Col 1
-    let curY1 = startY + 28;
-    col1.forEach(({ group, criteria: gCriteria }) => {
-      const boxH = 32 + gCriteria.length * 26 + 8;
-      const boxWidth = isSingleColumn ? 740 : 355;
-      performanceTableSVG += renderGroupBoxSVG(group, gCriteria, 30, curY1, boxWidth, boxH, studentPerf);
-      curY1 += boxH + 12;
-    });
-
-    // Render Col 2 if multi-column
-    if (!isSingleColumn && col2.length > 0) {
-      let curY2 = startY + 28;
-      col2.forEach(({ group, criteria: gCriteria }) => {
-        const boxH = 32 + gCriteria.length * 26 + 8;
-        performanceTableSVG += renderGroupBoxSVG(group, gCriteria, 415, curY2, 355, boxH, studentPerf);
-        curY2 += boxH + 12;
+      let curY = tableY + 24;
+      activeGroupsData.forEach(({ group, criteria: gCriteria }) => {
+        const boxH = 28 + gCriteria.length * 24 + 6;
+        performanceTableSVG += renderGroupBoxSVG(group, gCriteria, tableX, curY, tableW, boxH, studentPerf);
+        curY += boxH + 10;
       });
+    } else {
+      // Render below the radar chart
+      const startY = chartCenterY + radius + labelMargin - 15;
+      const tableX = 25;
+      const tableW = pageWidth - 50;
+
+      const isSingleColumn = activeGroupsData.length === 1;
+      let col1: typeof activeGroupsData = [];
+      let col2: typeof activeGroupsData = [];
+      let col1H = 0;
+      let col2H = 0;
+
+      activeGroupsData.forEach((gData) => {
+        const boxH = 28 + gData.criteria.length * 24 + 6;
+        if (isSingleColumn || col1H <= col2H) {
+          col1.push(gData);
+          col1H += boxH + 10;
+        } else {
+          col2.push(gData);
+          col2H += boxH + 10;
+        }
+      });
+
+      performanceTableSVG += `
+        <g transform="translate(${tableX}, ${startY})">
+          <text x="0" y="0" fill="#2563eb" font-size="12" font-weight="800" letter-spacing="0.5">PERFORMANCE SCORES DETAILS</text>
+          <text x="${tableW}" y="0" fill="#64748b" font-size="10.5" font-weight="600" text-anchor="end">Max Score: ${maxScore}</text>
+          <line x1="0" y1="10" x2="${tableW}" y2="10" stroke="#cbd5e1" stroke-width="1"/>
+        </g>
+      `;
+
+      let curY1 = startY + 24;
+      const colWidth = isSingleColumn ? tableW : (tableW - 15) / 2;
+      col1.forEach(({ group, criteria: gCriteria }) => {
+        const boxH = 28 + gCriteria.length * 24 + 6;
+        performanceTableSVG += renderGroupBoxSVG(group, gCriteria, tableX, curY1, colWidth, boxH, studentPerf);
+        curY1 += boxH + 10;
+      });
+
+      if (!isSingleColumn && col2.length > 0) {
+        let curY2 = startY + 24;
+        const col2X = tableX + colWidth + 15;
+        col2.forEach(({ group, criteria: gCriteria }) => {
+          const boxH = 28 + gCriteria.length * 24 + 6;
+          performanceTableSVG += renderGroupBoxSVG(group, gCriteria, col2X, curY2, colWidth, boxH, studentPerf);
+          curY2 += boxH + 10;
+        });
+      }
     }
   }
 
-  const svgHeight = size + extraHeight;
-
   const bgRectSVG =
     bgColor && bgColor !== 'transparent'
-      ? `<rect width="${size}" height="${svgHeight}" fill="${bgColor}"/>`
+      ? `<rect width="${pageWidth}" height="${pageHeight}" fill="${bgColor}"/>`
       : '';
 
+  const titleX = isLandscape ? chartCenterX : pageWidth / 2;
+  const titleY = Math.max(30, pageHeight * 0.05);
+
   return `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${svgHeight}" width="${size}" height="${svgHeight}">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${pageWidth} ${pageHeight}" width="${pageWidth}" height="${pageHeight}">
       ${bgRectSVG}
-      <text x="${cx}" y="36" fill="#0f172a" font-size="18" font-weight="700" text-anchor="middle">${escapeXml(student.name)} - ${escapeXml(miniTab.name)}</text>
+      <text x="${titleX}" y="${titleY}" fill="#0f172a" font-size="16" font-weight="800" text-anchor="middle">${escapeXml(student.name)} - ${escapeXml(miniTab.name)}</text>
       ${groupSlicesSVG}
       ${circlesSVG}
       ${spokesSVG}
@@ -479,26 +594,27 @@ function renderGroupBoxSVG(
 
   let rowsSVG = '';
   criteriaList.forEach((criterion, idx) => {
-    const rowTop = 32 + idx * 26;
+    const rowTop = 26 + idx * 24;
     const rawScore = studentPerf[criterion.id];
     const scoreVal = rawScore !== undefined && rawScore !== null ? rawScore : 0;
+    const maxChars = Math.max(15, Math.floor(width / 11));
     const displayName =
-      criterion.name.length > 34 ? `${criterion.name.substring(0, 33)}…` : criterion.name;
+      criterion.name.length > maxChars ? `${criterion.name.substring(0, maxChars - 1)}…` : criterion.name;
     const safeCriterionName = escapeXml(displayName);
 
     rowsSVG += `
-      <rect x="8" y="${rowTop}" width="${width - 16}" height="22" rx="5" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
-      <text x="16" y="${rowTop + 15}" fill="#334155" font-size="10.5" font-weight="500">${safeCriterionName}</text>
-      <rect x="${width - 58}" y="${rowTop + 3}" width="42" height="16" rx="4" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
-      <text x="${width - 37}" y="${rowTop + 14}" fill="#1d4ed8" font-size="10" font-weight="800" text-anchor="middle">${scoreVal}</text>
+      <rect x="6" y="${rowTop}" width="${width - 12}" height="20" rx="4" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+      <text x="12" y="${rowTop + 14}" fill="#334155" font-size="10" font-weight="500">${safeCriterionName}</text>
+      <rect x="${width - 50}" y="${rowTop + 2}" width="38" height="16" rx="3" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1"/>
+      <text x="${width - 31}" y="${rowTop + 13}" fill="#1d4ed8" font-size="9.5" font-weight="800" text-anchor="middle">${scoreVal}</text>
     `;
   });
 
   return `
     <g transform="translate(${x}, ${y})">
       <rect x="0" y="0" width="${width}" height="${height}" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
-      <circle cx="16" cy="18" r="4.5" fill="${groupColor}"/>
-      <text x="26" y="22" fill="${groupColor}" font-size="11.5" font-weight="700">${safeGroupName}</text>
+      <circle cx="14" cy="15" r="4" fill="${groupColor}"/>
+      <text x="24" y="19" fill="${groupColor}" font-size="11" font-weight="700">${safeGroupName}</text>
       ${rowsSVG}
     </g>
   `;

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MiniTab, Student, CriteriaGroup, Criterion } from '../types';
 import { getOrderedCriteria } from '../utils/chartHelpers';
-import { Plus, Trash2, Eye, EyeOff, Settings, UserPlus, Sliders, CheckSquare, Square, ChevronDown, ChevronUp, Layers, Users } from 'lucide-react';
+import { Plus, Trash2, Eye, EyeOff, Settings, UserPlus, Sliders, CheckSquare, Square, ChevronDown, ChevronUp, Layers, Users, Zap, Copy, Check, X, AlertTriangle } from 'lucide-react';
 
 interface StudentsDataEditorProps {
   miniTab: MiniTab;
@@ -23,6 +23,37 @@ export const StudentsDataEditor: React.FC<StudentsDataEditorProps> = ({
   const [selectedGroupIdForCriterion, setSelectedGroupIdForCriterion] = useState<string>(
     miniTab.groups[0]?.id || ''
   );
+
+  // Bulk update states
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkScores, setBulkScores] = useState<Record<string, number>>({});
+  const [bulkSuccessMsg, setBulkSuccessMsg] = useState<string | null>(null);
+  const [copiedCriterionId, setCopiedCriterionId] = useState<string | null>(null);
+  const [confirmSingleBulk, setConfirmSingleBulk] = useState<{
+    criterionId: string;
+    criterionName: string;
+    score: number;
+  } | null>(null);
+  const [showConfirmBulkAll, setShowConfirmBulkAll] = useState(false);
+
+  // Initialize bulkScores staged values whenever modal opens or criteria change
+  useEffect(() => {
+    const initialMap: Record<string, number> = {};
+    miniTab.criteria.forEach((c) => {
+      // Default to average score or default value
+      let sum = 0;
+      let count = 0;
+      miniTab.students.forEach((s) => {
+        const val = miniTab.performances[s.id]?.[c.id];
+        if (val !== undefined && val !== null) {
+          sum += val;
+          count++;
+        }
+      });
+      initialMap[c.id] = count > 0 ? Math.round((sum / count) * 2) / 2 : Math.ceil(miniTab.circles.count / 2);
+    });
+    setBulkScores(initialMap);
+  }, [isBulkModalOpen, miniTab.criteria, miniTab.circles.count]);
 
   // 1. STUDENT MANAGEMENT
   const handleAddStudent = () => {
@@ -90,6 +121,74 @@ export const StudentsDataEditor: React.FC<StudentsDataEditorProps> = ({
       ...miniTab,
       performances: updatedPerf,
     });
+  };
+
+  // Request bulk update for a single criterion - opens confirmation warning popup
+  const handleBulkUpdateSingleCriterion = (criterionId: string, score: number) => {
+    const criterion = miniTab.criteria.find((c) => c.id === criterionId);
+    setConfirmSingleBulk({
+      criterionId,
+      criterionName: criterion?.name || 'Criterion',
+      score: Math.min(miniTab.circles.count, Math.max(0, score)),
+    });
+  };
+
+  // Execute bulk update after user confirms warning modal
+  const executeBulkUpdateSingleCriterion = () => {
+    if (!confirmSingleBulk) return;
+    const { criterionId, score, criterionName } = confirmSingleBulk;
+    const clampedScore = Math.min(miniTab.circles.count, Math.max(0, score));
+    const updatedPerf = { ...miniTab.performances };
+
+    miniTab.students.forEach((s) => {
+      updatedPerf[s.id] = {
+        ...(updatedPerf[s.id] || {}),
+        [criterionId]: clampedScore,
+      };
+    });
+
+    onUpdateMiniTab({
+      ...miniTab,
+      performances: updatedPerf,
+    });
+
+    setCopiedCriterionId(criterionId);
+    setTimeout(() => setCopiedCriterionId(null), 2000);
+
+    setBulkSuccessMsg(`Set score ${clampedScore} for "${criterionName}" across all ${miniTab.students.length} students!`);
+    setTimeout(() => setBulkSuccessMsg(null), 3000);
+
+    setConfirmSingleBulk(null);
+  };
+
+  // Bulk update all criteria across ALL students in the class using staged bulkScores
+  const handleBulkApplyAllCriteria = () => {
+    const updatedPerf = { ...miniTab.performances };
+
+    miniTab.students.forEach((s) => {
+      const studentPerf = { ...(updatedPerf[s.id] || {}) };
+      Object.entries(bulkScores).forEach(([criterionId, score]) => {
+        studentPerf[criterionId] = Math.min(miniTab.circles.count, Math.max(0, Number(score) || 0));
+      });
+      updatedPerf[s.id] = studentPerf;
+    });
+
+    onUpdateMiniTab({
+      ...miniTab,
+      performances: updatedPerf,
+    });
+
+    setBulkSuccessMsg(`Updated criteria scores for all ${miniTab.students.length} students!`);
+    setTimeout(() => setBulkSuccessMsg(null), 3000);
+  };
+
+  // Apply quick preset to bulk scores
+  const handleApplyPresetToBulkScores = (val: number) => {
+    const presetMap: Record<string, number> = {};
+    miniTab.criteria.forEach((c) => {
+      presetMap[c.id] = Math.min(miniTab.circles.count, Math.max(0, val));
+    });
+    setBulkScores(presetMap);
   };
 
   // 3. GROUP FOR CRITERIA MANAGEMENT
@@ -373,7 +472,7 @@ export const StudentsDataEditor: React.FC<StudentsDataEditorProps> = ({
               {/* PERFORMANCE SCORES INPUT TABLE FOR SELECTED STUDENT OR WHOLE CLASS */}
               {selectedStudentId && (
                 <div className="pt-2 border-t border-slate-200 flex-1 flex flex-col min-h-0">
-                  <div className="flex items-center justify-between mb-2 shrink-0">
+                  <div className="flex items-center justify-between mb-2 shrink-0 flex-wrap gap-2">
                     <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                       Performance Scores for:{' '}
                       <span className="text-blue-600 font-extrabold">
@@ -385,10 +484,32 @@ export const StudentsDataEditor: React.FC<StudentsDataEditorProps> = ({
                         </span>
                       )}
                     </h4>
-                    <span className="text-[11px] text-slate-500">
-                      Max circle score: {miniTab.circles.count}
-                    </span>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsBulkModalOpen(true)}
+                        disabled={miniTab.students.length === 0}
+                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
+                        title="Bulk update criteria scores for all students at once"
+                      >
+                        <Zap className="w-3.5 h-3.5 text-amber-600 fill-amber-500" />
+                        <span>Bulk Update Class</span>
+                      </button>
+
+                      <span className="text-[11px] text-slate-500">
+                        Max score: {miniTab.circles.count}
+                      </span>
+                    </div>
                   </div>
+
+                  {/* BULK SUCCESS TOAST IF FIRED FROM OUTSIDE MODAL */}
+                  {bulkSuccessMsg && !isBulkModalOpen && (
+                    <div className="mb-2 p-2 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-bold flex items-center gap-1.5 animate-in fade-in duration-150 shrink-0">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>{bulkSuccessMsg}</span>
+                    </div>
+                  )}
 
                   <div className="space-y-3 flex-1 overflow-y-auto pr-1">
                     {miniTab.groups.map((group) => {
@@ -443,6 +564,25 @@ export const StudentsDataEditor: React.FC<StudentsDataEditorProps> = ({
                                       />
                                     )}
                                     <span className="text-slate-400 text-[10px]">/ {miniTab.circles.count}</span>
+
+                                    {!isClassAvgMode && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleBulkUpdateSingleCriterion(criterion.id, currentScore)}
+                                        title={`Apply score (${currentScore}) for this criterion to all ${miniTab.students.length} students`}
+                                        className={`p-1 rounded-md transition-colors cursor-pointer ${
+                                          copiedCriterionId === criterion.id
+                                            ? 'text-emerald-700 bg-emerald-100 font-bold'
+                                            : 'text-slate-400 hover:text-amber-700 hover:bg-amber-50'
+                                        }`}
+                                      >
+                                        {copiedCriterionId === criterion.id ? (
+                                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                        ) : (
+                                          <Copy className="w-3.5 h-3.5" />
+                                        )}
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -814,6 +954,264 @@ export const StudentsDataEditor: React.FC<StudentsDataEditorProps> = ({
           </div>
         )}
       </div>
+
+      {/* BULK UPDATE SCORES MODAL */}
+      {isBulkModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150 overflow-y-auto"
+          onClick={() => setIsBulkModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-lg my-8 overflow-hidden animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* MODAL HEADER */}
+            <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-amber-50 to-orange-50/50 border-b border-slate-200 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-amber-500/10 text-amber-700 rounded-xl border border-amber-200/60">
+                  <Zap className="w-5 h-5 text-amber-600 fill-amber-500" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-800">Bulk Update Class Scores</h3>
+                  <p className="text-xs text-slate-500">
+                    Set specific criteria scores for all <span className="font-bold text-slate-700">{miniTab.students.length}</span> students at once
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBulkModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* MODAL BODY */}
+            <div className="p-5 space-y-4 overflow-y-auto flex-1">
+              {/* QUICK PRESETS */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2">
+                <span className="text-xs font-bold text-slate-700 block">Quick Score Presets for All Criteria</span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPresetToBulkScores(miniTab.circles.count)}
+                    className="px-2.5 py-1 text-xs font-semibold bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-700 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                  >
+                    Set All to Max ({miniTab.circles.count})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPresetToBulkScores(Math.ceil(miniTab.circles.count / 2))}
+                    className="px-2.5 py-1 text-xs font-semibold bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-700 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                  >
+                    Set All to Mid ({Math.ceil(miniTab.circles.count / 2)})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPresetToBulkScores(0)}
+                    className="px-2.5 py-1 text-xs font-semibold bg-white border border-slate-200 hover:border-red-400 hover:bg-red-50 text-slate-700 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                  >
+                    Set All to 0
+                  </button>
+                </div>
+              </div>
+
+              {/* FEEDBACK TOAST / MESSAGE */}
+              {bulkSuccessMsg && (
+                <div className="p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in duration-200">
+                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{bulkSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* CRITERIA GROUP LIST */}
+              <div className="space-y-3">
+                {miniTab.groups.map((group) => {
+                  const groupCriteria = miniTab.criteria.filter((c) => c.groupId === group.id);
+                  if (groupCriteria.length === 0) return null;
+
+                  return (
+                    <div key={`bulk-group-${group.id}`} className="bg-slate-50/80 rounded-xl p-3 border border-slate-200/80 space-y-2">
+                      <div
+                        className="text-xs font-bold flex items-center gap-1.5"
+                        style={{ color: group.color || '#3b82f6' }}
+                      >
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: group.color }} />
+                        <span>{group.name}</span>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        {groupCriteria.map((criterion) => {
+                          const score = bulkScores[criterion.id] ?? Math.ceil(miniTab.circles.count / 2);
+
+                          return (
+                            <div
+                              key={`bulk-criterion-${criterion.id}`}
+                              className="flex items-center justify-between gap-3 bg-white p-2.5 rounded-xl border border-slate-200/80 text-xs shadow-2xs"
+                            >
+                              <span className="text-slate-700 font-semibold break-words flex-1" title={criterion.name}>
+                                {criterion.name}
+                              </span>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={miniTab.circles.count}
+                                  step="0.5"
+                                  value={score}
+                                  onChange={(e) =>
+                                    setBulkScores({
+                                      ...bulkScores,
+                                      [criterion.id]: parseFloat(e.target.value) || 0,
+                                    })
+                                  }
+                                  className="w-14 px-2 py-1 text-center text-xs font-bold rounded-lg border border-slate-300 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                                />
+                                <span className="text-slate-400 text-[10px] font-medium">/ {miniTab.circles.count}</span>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleBulkUpdateSingleCriterion(criterion.id, score)}
+                                  className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1"
+                                  title="Apply score for this single criterion to all students"
+                                >
+                                  <Users className="w-3 h-3 text-amber-600" />
+                                  <span>Set for All</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* MODAL FOOTER */}
+            <div className="flex items-center justify-between px-5 py-3.5 bg-slate-50 border-t border-slate-200 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsBulkModalOpen(false)}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 rounded-xl transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowConfirmBulkAll(true)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs rounded-xl transition-all shadow-xs cursor-pointer active:scale-98"
+              >
+                <Zap className="w-3.5 h-3.5 fill-white" />
+                <span>Apply All Scores to {miniTab.students.length} Students</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMATION WARNING POPUP FOR APPLYING ALL SCORES TO ALL STUDENTS */}
+      {showConfirmBulkAll && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setShowConfirmBulkAll(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-150 p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-amber-100 text-amber-700 rounded-2xl shrink-0">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-extrabold text-slate-800">Apply All Scores to Class?</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Are you sure you want to apply all configured criteria scores to all{' '}
+                  <span className="font-bold text-slate-800">{miniTab.students.length}</span> students in this class?
+                </p>
+              </div>
+            </div>
+
+            <div className="p-2.5 bg-amber-50/80 border border-amber-200/80 rounded-xl text-[11px] text-amber-800 font-medium">
+              ⚠️ This will update all criteria scores for every student in <span className="font-bold">{miniTab.name}</span>.
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowConfirmBulkAll(false)}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleBulkApplyAllCriteria();
+                  setShowConfirmBulkAll(false);
+                  setIsBulkModalOpen(false);
+                }}
+                className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+              >
+                Yes, Apply All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMATION WARNING POPUP FOR APPLYING CRITERION TO ALL STUDENTS */}
+      {confirmSingleBulk && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setConfirmSingleBulk(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-150 p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-amber-100 text-amber-700 rounded-2xl shrink-0">
+                <AlertTriangle className="w-5 h-5 text-amber-600" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-extrabold text-slate-800">Apply Score to All Students?</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Are you sure you want to set score <span className="font-bold text-amber-700">{confirmSingleBulk.score} / {miniTab.circles.count}</span> for{' '}
+                  <span className="font-bold text-slate-800">"{confirmSingleBulk.criterionName}"</span> for all{' '}
+                  <span className="font-bold text-slate-800">{miniTab.students.length}</span> students in this class?
+                </p>
+              </div>
+            </div>
+
+            <div className="p-2.5 bg-amber-50/80 border border-amber-200/80 rounded-xl text-[11px] text-amber-800 font-medium">
+              ⚠️ This will update this criterion's score for every student in the current class.
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setConfirmSingleBulk(null)}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={executeBulkUpdateSingleCriterion}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+              >
+                Yes, Apply to All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

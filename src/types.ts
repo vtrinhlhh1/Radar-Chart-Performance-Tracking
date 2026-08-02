@@ -1,3 +1,6 @@
+export type PaperSize = 'a4' | 'a5' | 'a3' | 'letter' | 'legal' | 'square';
+export type PaperOrientation = 'portrait' | 'landscape';
+
 export interface CircleConfig {
   count: number; // Amount of circles (e.g., 6)
   circleNames: string[]; // Names for each circle e.g. ["A1", "A2", "B1", "B2", "C1", "C2"]

@@ -68,7 +68,7 @@ export const MiniTabDropdown: React.FC<MiniTabDropdownProps> = ({
   const isEditingActive = editingItemId === activeMiniTab?.id;
 
   return (
-    <div className="bg-white p-2 rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-3">
+    <div className="no-print bg-white p-2 rounded-2xl border border-slate-200/80 shadow-xs flex flex-wrap items-center justify-between gap-3">
       {/* LABEL & DROPDOWN CONTROL */}
       <div className="flex items-center gap-2.5 flex-1 min-w-[280px] relative" ref={dropdownRef}>
         <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider border-r border-slate-200 shrink-0 select-none">
